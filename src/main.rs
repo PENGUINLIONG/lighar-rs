@@ -284,7 +284,14 @@ trait RayTracer {
     type Color;
 
     /// Generate rays and invoke `trace` to trace the rays.
-    fn ray_gen(&self, x: f32, y: f32, scene: &Scene) -> Self::Color;
+    fn ray_gen(
+        &self,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+        scene: &Scene,
+    ) -> Self::Color;
     /// Determine whether a ray intersected with an object.
     fn intersect(
         &self,
@@ -300,10 +307,19 @@ trait RayTracer {
     /// The ray didn't hit while all scene objects have been checked.
     fn miss(&self, payload: &Self::Payload) -> Self::Color;
     /// The ray hit the nearest object.
-    fn closest_hit(&self, intersect: &Intersection<Self::RayAttr>, payload: &Self::Payload) -> Self::Color;
+    fn closest_hit(
+        &self,
+        intersect: &Intersection<Self::RayAttr>,
+        payload: &Self::Payload,
+    ) -> Self::Color;
 
     /// Trace ray in the scene.
-    fn trace(&self, ray: &Ray, payload: &Self::Payload, scene: &Scene) -> Self::Color {
+    fn trace(
+        &self,
+        ray: &Ray,
+        payload: &Self::Payload,
+        scene: &Scene,
+    ) -> Self::Color {
         let mut closest: Option<Intersection<Self::RayAttr>> = None;
         for obj in scene.objs.iter() {
             for tri in obj.tris.iter() {
@@ -326,16 +342,11 @@ trait RayTracer {
     fn draw<FB>(&self, scene: &Scene, framebuf: &mut FB)
         where FB: Framebuffer<Color=Self::Color>
     {
-        let w = framebuf.width() as f32 / 2.0;
-        let h = framebuf.height() as f32 / 2.0;
-
-        for x in 0..framebuf.width() {
-            for y in 0..framebuf.height() {
-                let color = self.ray_gen(
-                    (x as f32 + 0.5) / w - 1.0,
-                    (y as f32 + 0.5) / w - 1.0,
-                    scene,
-                );
+        let w = framebuf.width();
+        let h = framebuf.height();
+        for x in 0..w {
+            for y in 0..h {
+                let color = self.ray_gen(x, y, w, h, scene);
                 framebuf.store(x, y, color);
             }
         }
@@ -392,7 +403,18 @@ impl RayTracer for DemoRayTracer {
     type RayAttr = Barycentric;
     type Color = Color;
 
-    fn ray_gen(&self, x: f32, y: f32, scene: &Scene) -> Self::Color {
+    fn ray_gen(
+        &self,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+        scene: &Scene
+    ) -> Self::Color {
+        let w = w as f32 / 2.0;
+        let h = h as f32 / 2.0;
+        let x = (x as f32 + 0.5) / w - 1.0;
+        let y = (y as f32 + 0.5) / h - 1.0;
         let ray = Ray {
             o: Point(x, y, 0.0),
             v: Vector(0.0, 0.0,1.0),
