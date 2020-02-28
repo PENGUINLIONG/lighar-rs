@@ -81,6 +81,73 @@ impl Div<f32> for Vector {
 }
 
 
+#[derive(Debug, Clone, Copy)]
+struct Color(pub f32, pub f32, pub f32, pub f32);
+impl Add<Color> for Color {
+    type Output = Color;
+    fn add(self, rhs: Color) -> Self::Output {
+        Color(self.0 + rhs.0, self.1 + rhs.1, self.2 + rhs.2, self.3 + rhs.3)
+    }
+}
+impl Sub<Color> for Color {
+    type Output = Color;
+    fn sub(self, rhs: Color) -> Self::Output {
+        Color(self.0 - rhs.0, self.1 - rhs.1, self.2 - rhs.2, self.3 - rhs.3)
+    }
+}
+impl Mul<f32> for Color {
+    type Output = Color;
+    fn mul(self, rhs: f32) -> Self::Output {
+        Color(self.0 * rhs, self.1 * rhs, self.2 * rhs, self.3 * rhs)
+    }
+}
+impl Mul<Color> for f32 {
+    type Output = Color;
+    fn mul(self, rhs: Color) -> Self::Output {
+        Color(self * rhs.0, self * rhs.1, self * rhs.2, self * rhs.3)
+    }
+}
+impl From<Color> for [u8; 3] {
+    fn from(x: Color) -> [u8; 3] {
+        [
+            (x.0 * 255.0) as u8,
+            (x.1 * 255.0) as u8,
+            (x.2 * 255.0) as u8,
+        ]
+    }
+}
+impl From<Color> for [u8; 4] {
+    fn from(x: Color) -> [u8; 4] {
+        [
+            (x.0 * 255.0) as u8,
+            (x.1 * 255.0) as u8,
+            (x.2 * 255.0) as u8,
+            (x.3 * 255.0) as u8,
+        ]
+    }
+}
+impl From<[u8; 3]> for Color {
+    fn from(x: [u8; 3]) -> Color {
+        Color(
+            (x[0] as f32) / 255.0,
+            (x[1] as f32) / 255.0,
+            (x[2] as f32) / 255.0,
+            1.0,
+        )
+    }
+}
+impl From<[u8; 4]> for Color {
+    fn from(x: [u8; 4]) -> Color {
+        Color(
+            (x[0] as f32) / 255.0,
+            (x[1] as f32) / 255.0,
+            (x[2] as f32) / 255.0,
+            (x[3] as f32) / 255.0,
+        )
+    }
+}
+
+
 #[derive(Debug, Clone)]
 struct Triangle {
     /// Origin of the triangle.
@@ -265,9 +332,9 @@ trait RayTracer {
         for x in 0..framebuf.width() {
             for y in 0..framebuf.height() {
                 let color = self.ray_gen(
-                    x as f32 / w - 1.0,
-                    y as f32 / w - 1.0,
-                    scene
+                    (x as f32 + 0.5) / w - 1.0,
+                    (y as f32 + 0.5) / w - 1.0,
+                    scene,
                 );
                 framebuf.store(x, y, color);
             }
@@ -283,26 +350,32 @@ trait RayTracer {
 
 
 
+
+
+
 struct DemoFramebuffer {
     w: u32,
     h: u32,
-    bmp: Vec<u8>,
+    buf: image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
 }
 impl DemoFramebuffer {
     pub fn new(w: u32, h: u32) -> DemoFramebuffer {
-        let bmp = std::iter::repeat(0)
-            .take((w * h) as usize)
-            .collect::<Vec<_>>();
-        DemoFramebuffer { w, h, bmp }
+        let buf = image::ImageBuffer::new(w, h);
+        DemoFramebuffer { w, h, buf }
+    }
+    pub fn save<P>(&self, path: P) -> image::ImageResult<()>
+        where P: AsRef<std::path::Path>
+    {
+        self.buf.save(path)
     }
 }
 impl Framebuffer for DemoFramebuffer {
-    type Color = f32;
+    type Color = Color;
     fn width(&self) -> u32 { self.w }
     fn height(&self) -> u32 { self.h }
     fn store(&mut self, x: u32, y: u32, color: Self::Color) {
-        let i = (y * self.w + x) as usize;
-        self.bmp[i] = (color * 255.0) as u8;
+        let color: [u8; 3] = color.into();
+        self.buf.put_pixel(x, y, color.into());
     }
 }
 
@@ -317,7 +390,7 @@ impl DemoRayTracer {
 impl RayTracer for DemoRayTracer {
     type Payload = ();
     type RayAttr = Barycentric;
-    type Color = f32;
+    type Color = Color;
 
     fn ray_gen(&self, x: f32, y: f32, scene: &Scene) -> Self::Color {
         let ray = Ray {
@@ -344,14 +417,14 @@ impl RayTracer for DemoRayTracer {
         true
     }
     fn miss(&self, payload: &Self::Payload) -> Self::Color {
-        0.0
+        [255, 228, 0].into()
     }
     fn closest_hit(
         &self,
         intersect: &Intersection<Self::RayAttr>,
         payload: &Self::Payload,
     ) -> Self::Color {
-        1.0/255.0
+        [65, 65, 65].into()
     }
 }
 
@@ -369,8 +442,8 @@ fn main() {
     let scene = Scene {
         objs: vec![sqr],
     };
-    let mut framebuf = DemoFramebuffer::new(32, 32);
+    let mut framebuf = DemoFramebuffer::new(256, 256);
     let rt = DemoRayTracer::new();
     rt.draw(&scene, &mut framebuf);
-    println!("{:?}", framebuf.bmp);
+    framebuf.save("1.bmp").unwrap();
 }
