@@ -1,25 +1,30 @@
 use std::ops::{Add, Sub, Mul, Div};
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Point(pub f32, pub f32, pub f32);
 impl Point {
     #[inline]
-    fn affine_add(self, rhs: Vector) -> Point {
+    pub fn affine_add(self, rhs: Vector) -> Point {
         Point(self.0 + rhs.0, self.1 + rhs.1, self.2 + rhs.2)
     }
     #[inline]
-    fn affine_sub(self, rhs: Vector) -> Point {
+    pub fn affine_sub(self, rhs: Vector) -> Point {
         Point(self.0 - rhs.0, self.1 - rhs.1, self.2 - rhs.2)
     }
     /// Get the relative position offset vector from `rhs`.
     #[inline]
-    fn rel_from(&self, rhs: Point) -> Vector {
+    pub fn rel_from(&self, rhs: Point) -> Vector {
         Vector(self.0 - rhs.0, self.1 - rhs.1, self.2 - rhs.2)
+    }
+    /// Only used to calculate barycentric coordinates.
+    #[inline]
+    fn to_vec(&self) -> Vector {
+        Vector(self.0, self.1, self.2)
     }
 }
 
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Vector(pub f32, pub f32, pub f32);
 impl Vector {
     #[inline]
@@ -76,7 +81,7 @@ impl Div<f32> for Vector {
 }
 
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct Triangle {
     /// Origin of the triangle.
     o: Point,
@@ -98,7 +103,36 @@ impl Triangle {
 }
 
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Copy)]
+struct Barycentric {
+    u: f32,
+    v: f32,
+}
+impl Barycentric {
+    pub fn new(p: &Point, tri: &Triangle) -> Option<Barycentric> {
+        let x = tri.x;
+        let y = tri.y;
+        let p = p.to_vec() - tri.o.to_vec();
+        // See: https://gamedev.stackexchange.com/questions/23743/whats-the-most-efficient-way-to-find-barycentric-coordinates
+        let d00 = x.dot(x);
+        let d01 = x.dot(y);
+        let d11 = y.dot(y);
+        let d20 = p.dot(x);
+        let d21 = p.dot(y);
+        let denom = d00 * d11 - d01 * d01;
+        let u = (d11 * d20 - d01 * d21) / denom;
+        let v = (d00 * d21 - d01 * d20) / denom;
+        if u < 0.0 || v < 0.0 || u + v > 1.0 {
+            // Invalid weight. Weight must be greater than 0 so that the point
+            // is situated inside the triangle.
+            None
+        } else {
+            Some(Barycentric { u, v })
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 struct Ray {
     /// Origin.
     pub o: Point,
@@ -109,7 +143,7 @@ struct Ray {
 /// Cast a ray to the triangle and return the point of intersection if such
 /// point exists.
 #[inline]
-fn ray_cast_tri(ray: &Ray, tri: &Triangle) -> Option<Intersection<Point>> {
+fn ray_cast_tri(ray: &Ray, tri: &Triangle) -> Option<Intersection<Barycentric>> {
     // Relative position from the origin of triangle to the origin of the ray.
     let dtriray = ray.o.rel_from(tri.o);
     // Displacement from the triangle plane to the ray origin (in normal unit).
@@ -130,11 +164,16 @@ fn ray_cast_tri(ray: &Ray, tri: &Triangle) -> Option<Intersection<Point>> {
 
     // Intersection position.
     let pos = ray.o.affine_sub(ray.v * r1 / r2);
-    // Distance from the ray origin to the triangle.
-    let t = r1.abs();
-    let kind = if r2 < 0.0 { HitKind::Front } else { HitKind::Back };
-    let res = Intersection { attr: pos, kind, t };
-    Some(res)
+    // Barycentric coords.
+    if let Some(bary) = Barycentric::new(&pos, tri) {
+        // Distance from the ray origin to the triangle.
+        let t = r1.abs();
+        let kind = if r2 < 0.0 { HitKind::Front } else { HitKind::Back };
+        let res = Intersection { attr: bary, kind, t };
+        Some(res)
+    } else {
+        None
+    }
 }
 
 
@@ -142,20 +181,20 @@ trait Framebuffer {
     /// Color unit.
     type Color;
 
-    fn width(&self) -> usize;
-    fn height(&self) -> usize;
-    fn store(&mut self, x: usize, y: usize, color: Self::Color);
+    fn width(&self) -> u32;
+    fn height(&self) -> u32;
+    fn store(&mut self, x: u32, y: u32, color: Self::Color);
 }
 
 
 struct Object {
-    tris: Vec<Triangle>,
+    pub tris: Vec<Triangle>,
 }
 struct Scene {
-    objs: Vec<Object>,
+    pub objs: Vec<Object>,
 }
 
-
+#[derive(PartialEq, Eq)]
 enum HitKind {
     Front, Back
 }
@@ -178,18 +217,26 @@ trait RayTracer {
     type Color;
 
     /// Generate rays and invoke `trace` to trace the rays.
-    fn ray_gen(&self, x: f32, y: f32) -> Self::Color;
+    fn ray_gen(&self, x: f32, y: f32, scene: &Scene) -> Self::Color;
     /// Determine whether a ray intersected with an object.
-    fn intersect(&self, ray: &Ray, tri: &Triangle) -> Option<Intersection<Self::RayAttr>>;
+    fn intersect(
+        &self,
+        ray: &Ray,
+        tri: &Triangle,
+    ) -> Option<Intersection<Self::RayAttr>>;
     /// The ray hit any object. Returns whether the hit is accepted.
-    fn any_hit(&self, intersect: &Intersection<Self::RayAttr>, payload: &Self::Payload) -> bool;
+    fn any_hit(
+        &self,
+        intersect: &Intersection<Self::RayAttr>,
+        payload: &Self::Payload,
+    ) -> bool;
     /// The ray didn't hit while all scene objects have been checked.
     fn miss(&self, payload: &Self::Payload) -> Self::Color;
     /// The ray hit the nearest object.
     fn closest_hit(&self, intersect: &Intersection<Self::RayAttr>, payload: &Self::Payload) -> Self::Color;
 
     /// Trace ray in the scene.
-    fn trace<S>(&self, ray: &Ray, payload: &Self::Payload, scene: &Scene) -> Self::Color {
+    fn trace(&self, ray: &Ray, payload: &Self::Payload, scene: &Scene) -> Self::Color {
         let mut closest: Option<Intersection<Self::RayAttr>> = None;
         for obj in scene.objs.iter() {
             for tri in obj.tris.iter() {
@@ -209,15 +256,19 @@ trait RayTracer {
         }
     }
 
-    fn draw<FB>(&self, framebuf: &mut FB)
+    fn draw<FB>(&self, scene: &Scene, framebuf: &mut FB)
         where FB: Framebuffer<Color=Self::Color>
     {
-        let w = framebuf.width() as f32;
-        let h = framebuf.height() as f32;
+        let w = framebuf.width() as f32 / 2.0;
+        let h = framebuf.height() as f32 / 2.0;
 
         for x in 0..framebuf.width() {
             for y in 0..framebuf.height() {
-                let color = self.ray_gen(x as f32 / w, y as f32 / h);
+                let color = self.ray_gen(
+                    x as f32 / w - 1.0,
+                    y as f32 / w - 1.0,
+                    scene
+                );
                 framebuf.store(x, y, color);
             }
         }
@@ -226,6 +277,100 @@ trait RayTracer {
 
 
 
+
+
+
+
+
+
+struct DemoFramebuffer {
+    w: u32,
+    h: u32,
+    bmp: Vec<u8>,
+}
+impl DemoFramebuffer {
+    pub fn new(w: u32, h: u32) -> DemoFramebuffer {
+        let bmp = std::iter::repeat(0)
+            .take((w * h) as usize)
+            .collect::<Vec<_>>();
+        DemoFramebuffer { w, h, bmp }
+    }
+}
+impl Framebuffer for DemoFramebuffer {
+    type Color = f32;
+    fn width(&self) -> u32 { self.w }
+    fn height(&self) -> u32 { self.h }
+    fn store(&mut self, x: u32, y: u32, color: Self::Color) {
+        let i = (y * self.w + x) as usize;
+        self.bmp[i] = (color * 255.0) as u8;
+    }
+}
+
+
+struct DemoRayTracer {
+}
+impl DemoRayTracer {
+    pub fn new() -> DemoRayTracer {
+        DemoRayTracer {}
+    }
+}
+impl RayTracer for DemoRayTracer {
+    type Payload = ();
+    type RayAttr = Barycentric;
+    type Color = f32;
+
+    fn ray_gen(&self, x: f32, y: f32, scene: &Scene) -> Self::Color {
+        let ray = Ray {
+            o: Point(x, y, 0.0),
+            v: Vector(0.0, 0.0,1.0),
+        };
+        let payload = ();
+
+        self.trace(&ray, &payload, scene)
+    }
+    fn intersect(
+        &self,
+        ray: &Ray,
+        tri: &Triangle,
+    ) -> Option<Intersection<Self::RayAttr>> {
+        ray_cast_tri(ray, tri)
+    }
+    fn any_hit(
+        &self,
+        intersect: &Intersection<Self::RayAttr>,
+        payload: &Self::Payload,
+    ) -> bool {
+        //intersect.kind == HitKind::Front
+        true
+    }
+    fn miss(&self, payload: &Self::Payload) -> Self::Color {
+        0.0
+    }
+    fn closest_hit(
+        &self,
+        intersect: &Intersection<Self::RayAttr>,
+        payload: &Self::Payload,
+    ) -> Self::Color {
+        1.0/255.0
+    }
+}
+
+
 fn main() {
-    println!("Hello, world!");
+    let sqr = Object {
+        tris: vec![
+            Triangle::new(
+                Point(0.0, 0.0, 1.0),
+                Point(0.0, 1.0, 1.0),
+                Point(1.0, 0.0, 1.0),
+            ),
+        ],
+    };
+    let scene = Scene {
+        objs: vec![sqr],
+    };
+    let mut framebuf = DemoFramebuffer::new(32, 32);
+    let rt = DemoRayTracer::new();
+    rt.draw(&scene, &mut framebuf);
+    println!("{:?}", framebuf.bmp);
 }
