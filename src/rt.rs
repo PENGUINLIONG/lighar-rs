@@ -1,4 +1,5 @@
-use crate::geom::Triangle;
+use std::ops::Mul;
+use crate::geom::{Transform, Triangle};
 use crate::scene::Scene;
 
 pub trait Framebuffer {
@@ -28,12 +29,12 @@ pub trait RayTracer {
     /// User specified data for computation.
     type Payload;
     /// Ray data.
-    type Ray;
+    type Ray: Clone;
     /// Data that describes how a ray intersected with a primitive.
     type RayAttr;
     /// Color unit. A ray tracer can only write to framebuffers with the same
     /// color type.
-    type Color;
+    type Color: Clone;
 
     /// Generate rays and invoke `trace` to trace the rays.
     fn ray_gen(
@@ -49,6 +50,7 @@ pub trait RayTracer {
         &self,
         ray: &Self::Ray,
         tri: &Triangle,
+        mat: &Self::Material,
     ) -> Option<Intersection<Self::RayAttr>>;
     /// The ray hit any object. Returns whether the hit is accepted.
     fn any_hit(
@@ -68,20 +70,22 @@ pub trait RayTracer {
     /// Trace ray in the scene.
     fn trace(
         &self,
-        ray: &Self::Ray,
+        ray: Self::Ray,
         payload: &mut Self::Payload,
         scene: &Scene<Self::Material>,
     ) -> Self::Color {
         let mut closest: Option<Intersection<Self::RayAttr>> = None;
         for obj in scene.objs.iter() {
+            let verts = obj.verts.iter()
+                .map(|&x| obj.world2obj * x)
+                .collect::<Vec<_>>();
             for (x, y, z) in obj.idxs.iter() {
                 let tri = Triangle::new(
-                    obj.verts[*x],
-                    obj.verts[*y],
-                    obj.verts[*z],
+                    verts[*x],
+                    verts[*y],
+                    verts[*z],
                 );
-                //println!("{:?}", tri);
-                if let Some(x) = self.intersect(ray, &tri) {
+                if let Some(x) = self.intersect(&ray, &tri, &obj.mat) {
                     if self.any_hit(&x, payload) {
                         let tmax = closest.as_ref().map(|intersect| intersect.t)
                             .unwrap_or(std::f32::INFINITY);

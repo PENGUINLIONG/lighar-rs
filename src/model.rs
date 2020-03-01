@@ -1,7 +1,8 @@
-use crate::geom::Point;
+use crate::geom::{Point, Transform};
 use crate::scene::Object;
 
-pub fn make_cube<M>(mat: M) -> Object<M> {
+pub fn make_cube<M>(mat: M, world2obj: Transform) -> Object<M> {
+    let obj2world = world2obj.inverse();
     const p: f32 = 0.5;
     const n: f32 = -0.5;
     let verts = vec![
@@ -30,5 +31,5 @@ pub fn make_cube<M>(mat: M) -> Object<M> {
         (a, d, c), (a, c, b),
         (e, f, g), (e, g, h),
     ];
-    Object { verts, idxs, mat }
+    Object { verts, idxs, mat, obj2world, world2obj }
 }

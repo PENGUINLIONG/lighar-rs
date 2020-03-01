@@ -42,6 +42,11 @@ impl Framebuffer for DemoFramebuffer {
     }
 }
 
+#[derive(Default)]
+struct DebugPayload {
+    small_t: bool,
+}
+
 
 struct DemoRayTracer {
 }
@@ -52,7 +57,7 @@ impl DemoRayTracer {
 }
 impl RayTracer for DemoRayTracer {
     type Material = ();
-    type Payload = ();
+    type Payload = DebugPayload;
     type Ray = Ray;
     type RayAttr = Barycentric;
     type Color = Color;
@@ -71,24 +76,28 @@ impl RayTracer for DemoRayTracer {
         let y = (y as f32 + 0.5) / h - 1.0;
         let ray = Ray {
             o: Point(x, y, 0.0),
-            v: Vector(0.0, 0.0,1.0),
+            v: Vector(0.0, 0.0, 1.0),
         };
-        let mut payload = ();
+        let mut payload = Default::default();
 
-        self.trace(&ray, &mut payload, scene)
+        self.trace(ray, &mut payload, scene)
     }
     fn intersect(
         &self,
         ray: &Self::Ray,
         tri: &Triangle,
+        mat: &Self::Material,
     ) -> Option<Intersection<Self::RayAttr>> {
-        ray_cast_tri(ray, tri)
+        ray_cast_tri(&ray, tri)
     }
     fn any_hit(
         &self,
         intersect: &Intersection<Self::RayAttr>,
         payload: &mut Self::Payload,
     ) -> bool {
+        if (intersect.t < 1e-2) {
+            payload.small_t = true;
+        }
         intersect.kind == HitKind::Front
     }
     fn miss(&self, payload: &mut Self::Payload) -> Self::Color {
@@ -99,12 +108,29 @@ impl RayTracer for DemoRayTracer {
         intersect: &Intersection<Self::RayAttr>,
         payload: &mut Self::Payload,
     ) -> Self::Color {
-        [65, 65, 65].into()
+        let u = intersect.attr.u;
+        let v = intersect.attr.v;
+        let w = 1.0 - u - v;
+        
+        if payload.small_t {
+            [0, 0, 255].into()
+        } else if u < 2e-2 || v < 2e-2 || w < 2e-2 {
+            [65, 65, 65].into()
+        } else {
+            [255, 255, 255].into()
+        }
     }
 }
 
 fn main() {
-    let cube = make_cube(());
+    let cube = make_cube(
+        (),
+        Transform::eye()
+            .scale(Vector(0.5, 0.5, 0.5))
+            .rotate((45.0 as f32).to_radians(), Vector(0.0, 1.0, 0.0))
+            .rotate((45.0 as f32).to_radians(), Vector(1.0, 0.0, 0.0))
+            .translate(Vector(0.0, 0.0, 1.0)),
+    );
     let scene = Scene {
         objs: vec![cube],
     };
