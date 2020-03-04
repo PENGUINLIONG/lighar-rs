@@ -43,7 +43,6 @@ pub trait RayTracer {
         y: u32,
         w: u32,
         h: u32,
-        scene: &Scene<Self::Material>,
     ) -> Self::Color;
     /// Determine whether a ray intersected with an object.
     fn intersect(
@@ -55,16 +54,26 @@ pub trait RayTracer {
     /// The ray hit any object. Returns whether the hit is accepted.
     fn any_hit(
         &self,
+        ray: &Self::Ray,
+        tri: &Triangle,
         intersect: &Intersection<Self::RayAttr>,
         payload: &mut Self::Payload,
+        mat: &Self::Material,
     ) -> bool;
     /// The ray didn't hit while all scene objects have been checked.
-    fn miss(&self, payload: &mut Self::Payload) -> Self::Color;
+    fn miss(
+        &self,
+        ray: &Self::Ray,
+        payload: &mut Self::Payload
+    ) -> Self::Color;
     /// The ray hit the nearest object.
     fn closest_hit(
         &self,
+        ray: &Self::Ray,
+        tri: &Triangle,
         intersect: &Intersection<Self::RayAttr>,
         payload: &mut Self::Payload,
+        mat: &Self::Material,
     ) -> Self::Color;
 
     /// Trace ray in the scene.
@@ -72,10 +81,13 @@ pub trait RayTracer {
         &self,
         ray: Self::Ray,
         payload: &mut Self::Payload,
-        scene: &Scene<Self::Material>,
     ) -> Self::Color {
-        let mut closest: Option<Intersection<Self::RayAttr>> = None;
-        for obj in scene.objs.iter() {
+        let mut closest: Option<(
+            Triangle,
+            &Self::Material,
+            Intersection<Self::RayAttr>,
+        )> = None;
+        for obj in self.scene().objs.iter() {
             let verts = obj.verts.iter()
                 .map(|&x| obj.world2obj * x)
                 .collect::<Vec<_>>();
@@ -86,33 +98,37 @@ pub trait RayTracer {
                     verts[*z],
                 );
                 if let Some(x) = self.intersect(&ray, &tri, &obj.mat) {
-                    if self.any_hit(&x, payload) {
-                        let tmax = closest.as_ref().map(|intersect| intersect.t)
+                    if self.any_hit(&ray, &tri, &x, payload, &obj.mat) {
+                        let tmax = closest.as_ref()
+                            .map(|(_, _, intersect)| intersect.t)
                             .unwrap_or(std::f32::INFINITY);
                         if x.t < tmax {
-                            closest = Some(x);
+                            closest = Some((tri, &obj.mat, x));
                         }
                     }
                 }
             }
         }
-        if let Some(intersect) = closest {
-            self.closest_hit(&intersect, payload)
+        if let Some((tri, mat, intersect)) = closest {
+            self.closest_hit(&ray, &tri, &intersect, payload, mat)
         } else {
-            self.miss(payload)
+            self.miss(&ray, payload)
         }
     }
 
-    fn draw<FB>(&self, scene: &Scene<Self::Material>, framebuf: &mut FB)
+    fn draw<FB>(&self, framebuf: &mut FB)
         where FB: Framebuffer<Color=Self::Color>
     {
         let w = framebuf.width();
         let h = framebuf.height();
         for x in 0..w {
             for y in 0..h {
-                let color = self.ray_gen(x, y, w, h, scene);
+                let color = self.ray_gen(x, y, w, h);
                 framebuf.store(x, y, color);
             }
         }
     }
+
+    /// The scene the tracer is bound to.
+    fn scene(&self) -> &Scene<Self::Material>;
 }

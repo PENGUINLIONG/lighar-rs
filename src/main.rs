@@ -8,11 +8,12 @@ use rt::*;
 use scene::*;
 use model::*;
 
+#[derive(Default)]
 struct PbrMaterial {
     albedo: Color,
     rough: f32,
     metal: f32,
-    emit: (f32, Color),
+    emit: Color,
 }
 
 
@@ -42,22 +43,23 @@ impl Framebuffer for DemoFramebuffer {
     }
 }
 
-#[derive(Default)]
 struct DebugPayload {
-    small_t: bool,
+    refl_ray: Ray,
 }
 
 
 struct DemoRayTracer {
+    s: Scene<PbrMaterial>,
+    ambient: Color,
 }
 impl DemoRayTracer {
-    pub fn new() -> DemoRayTracer {
-        DemoRayTracer {}
+    pub fn new(s: Scene<PbrMaterial>, ambient: Color) -> DemoRayTracer {
+        DemoRayTracer { s, ambient }
     }
 }
 impl RayTracer for DemoRayTracer {
-    type Material = ();
-    type Payload = DebugPayload;
+    type Material = PbrMaterial;
+    type Payload = i32; // Recursion count.
     type Ray = Ray;
     type RayAttr = Barycentric;
     type Color = Color;
@@ -68,19 +70,28 @@ impl RayTracer for DemoRayTracer {
         y: u32,
         w: u32,
         h: u32,
-        scene: &Scene<Self::Material>,
     ) -> Self::Color {
         let w = w as f32 / 2.0;
         let h = h as f32 / 2.0;
         let x = (x as f32 + 0.5) / w - 1.0;
         let y = (y as f32 + 0.5) / h - 1.0;
-        let ray = Ray {
-            o: Point(x, y, 0.0),
-            v: Vector(0.0, 0.0, 1.0),
-        };
         let mut payload = Default::default();
 
-        self.trace(ray, &mut payload, scene)
+        let mut rv = Default::default();
+        let n = 2;
+        let rn = (n as f32).recip();
+        let rn2 = rn * rn;
+        for i in 0..n {
+            for j in 0..n {
+                let ray = Ray {
+                    o: Point(x + i as f32 * rn / w, y + j as f32 * rn / h, 0.0),
+                    v: Vector(0.0, 0.0, 1.0),
+                };
+        
+                rv = rv + self.trace(ray, &mut payload) * rn2;
+            }
+        }
+        rv
     }
     fn intersect(
         &self,
@@ -92,50 +103,83 @@ impl RayTracer for DemoRayTracer {
     }
     fn any_hit(
         &self,
+        ray: &Self::Ray,
+        tri: &Triangle,
         intersect: &Intersection<Self::RayAttr>,
         payload: &mut Self::Payload,
+        mat: &Self::Material,
     ) -> bool {
-        if (intersect.t < 1e-2) {
-            payload.small_t = true;
-        }
         intersect.kind == HitKind::Front
+        //true
     }
-    fn miss(&self, payload: &mut Self::Payload) -> Self::Color {
-        [255, 228, 0].into()
+    fn miss(
+        &self,
+        ray: &Self::Ray,
+        payload: &mut Self::Payload
+    ) -> Self::Color {
+        [0, 0, 0].into()
     }
     fn closest_hit(
         &self,
+        ray: &Self::Ray,
+        tri: &Triangle,
         intersect: &Intersection<Self::RayAttr>,
         payload: &mut Self::Payload,
+        mat: &Self::Material,
     ) -> Self::Color {
-        let u = intersect.attr.u;
-        let v = intersect.attr.v;
+        let bary = intersect.attr;
+        let u = bary.u;
+        let v = bary.v;
         let w = 1.0 - u - v;
-        
-        if payload.small_t {
-            [0, 0, 255].into()
-        } else if u < 2e-2 || v < 2e-2 || w < 2e-2 {
-            [65, 65, 65].into()
+        let p = tri.o.affine_add(u * tri.x + v * tri.y);
+        let refl = -reflect(ray.v, tri.n);
+        let refl_ray = Ray {
+            o: p,
+            v: refl.normalize(),
+        };
+        //return [255, 0, 255].into();
+        if *payload < 5 {
+            *payload += 1;
+            mat.emit + mat.albedo * (self.trace(refl_ray, payload) + self.ambient)
         } else {
-            [255, 255, 255].into()
+            mat.emit + mat.albedo * self.ambient
         }
+    }
+    fn scene(&self) -> &Scene<PbrMaterial> {
+        &self.s
     }
 }
 
 fn main() {
+    let cam_trans = Transform::eye()
+        .scale(Vector(0.5, 0.5, 0.5))
+        .rotate((45.0 as f32).to_radians(), Vector(0.0, 1.0, 0.0))
+        .rotate((45.0 as f32).to_radians(), Vector(1.0, 0.0, 0.0))
+        .translate(Vector(0.0, 0.0, 1.0));
     let cube = make_cube(
-        (),
-        Transform::eye()
-            .scale(Vector(0.5, 0.5, 0.5))
-            .rotate((45.0 as f32).to_radians(), Vector(0.0, 1.0, 0.0))
-            .rotate((45.0 as f32).to_radians(), Vector(1.0, 0.0, 0.0))
-            .translate(Vector(0.0, 0.0, 1.0)),
+        PbrMaterial {
+            albedo: [255, 228, 0].into(),
+            ..Default::default()
+        },
+        cam_trans * Transform::eye()
+            .translate(Vector(-1.0, 0.0, 0.0)),
+    );
+    let cube2 = make_cube(
+        PbrMaterial {
+            albedo: [254, 228, 0].into(),
+            emit: [68, 228, 254].into(),
+            ..Default::default()
+        },
+        cam_trans * Transform::eye()
+            .translate(Vector(0.75, 0.0, 0.0))
+            .rotate((30.0_f32).to_radians(), Vector(1.0, 1.0, 0.0)),
     );
     let scene = Scene {
-        objs: vec![cube],
+        objs: vec![cube, cube2],
     };
     let mut framebuf = DemoFramebuffer::new(256, 256);
-    let rt = DemoRayTracer::new();
-    rt.draw(&scene, &mut framebuf);
+    let albedo = [104, 100, 70].into();
+    let rt = DemoRayTracer::new(scene, albedo);
+    rt.draw(&mut framebuf);
     framebuf.save("1.bmp").unwrap();
 }
