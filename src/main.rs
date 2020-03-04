@@ -73,25 +73,30 @@ impl RayTracer for DemoRayTracer {
     ) -> Self::Color {
         let w = w as f32 / 2.0;
         let h = h as f32 / 2.0;
-        let x = (x as f32 + 0.5) / w - 1.0;
-        let y = (y as f32 + 0.5) / h - 1.0;
-        let mut payload = Default::default();
+        let x = (x as f32) / w - 1.0;
+        let y = (y as f32) / h - 1.0;
 
-        let mut rv = Default::default();
-        let n = 2;
+        let n = 8;
         let rn = (n as f32).recip();
         let rn2 = rn * rn;
-        for i in 0..n {
-            for j in 0..n {
-                let ray = Ray {
-                    o: Point(x + i as f32 * rn / w, y + j as f32 * rn / h, 0.0),
-                    v: Vector(0.0, 0.0, 1.0),
-                };
-        
-                rv = rv + self.trace(ray, &mut payload) * rn2;
-            }
-        }
-        rv
+        let rv: Color = (0..n).into_iter()
+            .fold(Color::default(), |seed, i| {
+                seed + (0..n).into_iter()
+                    .fold(Color::default(), |seed, j| {
+                        let ray = Ray {
+                            o: Point(
+                                x + i as f32 * rn / w,
+                                y + j as f32 * rn / h,
+                                0.0
+                            ),
+                            v: Vector(0.0, 0.0, 1.0),
+                        };
+                        let mut payload = Default::default();
+
+                        seed + self.trace(ray, &mut payload)
+                    })
+            });
+        rv * ((n * n) as f32).recip()
     }
     fn intersect(
         &self,
@@ -110,7 +115,6 @@ impl RayTracer for DemoRayTracer {
         mat: &Self::Material,
     ) -> bool {
         intersect.kind == HitKind::Front
-        //true
     }
     fn miss(
         &self,
@@ -162,20 +166,31 @@ fn main() {
             ..Default::default()
         },
         cam_trans * Transform::eye()
-            .translate(Vector(-1.0, 0.0, 0.0)),
+            .translate(Vector(-1.0, 0.75, 0.0)),
     );
     let cube2 = make_cube(
         PbrMaterial {
-            albedo: [254, 228, 0].into(),
+            albedo: [68, 228, 254].into(),
             emit: [68, 228, 254].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
             .translate(Vector(0.75, 0.0, 0.0))
-            .rotate((30.0_f32).to_radians(), Vector(1.0, 1.0, 0.0).normalize()),
+            .rotate((15.0_f32).to_radians(), Vector(1.0, 1.0, 0.0).normalize())
+            .translate(Vector(0.0, -1.0, 0.25)),
     );
+    let cube3 = make_cube(
+        PbrMaterial {
+            albedo: [255, 54, 72].into(),
+            emit: [255, 54, 72].into(),
+            ..Default::default()
+        },
+        cam_trans * Transform::eye()
+            .translate(Vector(-1.0, -0.75, 0.0)),
+    );
+
     let scene = Scene {
-        objs: vec![cube, cube2],
+        objs: vec![cube, cube2, cube3],
     };
     let mut framebuf = DemoFramebuffer::new(256, 256);
     let albedo = [104, 100, 70].into();
