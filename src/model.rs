@@ -33,3 +33,17 @@ pub fn make_cube<M>(mat: M, world2obj: Transform) -> Object<M> {
     ];
     Object { verts, idxs, mat, obj2world, world2obj }
 }
+
+pub fn make_pln<M>(mat: M, world2obj: Transform) -> Object<M> {
+    let obj2world = world2obj.inverse();
+    let verts = vec![
+        Point(-0.5, 0.0, -0.5),
+        Point(-0.5, 0.0, 0.5),
+        Point(0.5, 0.0, 0.5),
+        Point(0.5, 0.0, -0.5),
+    ];
+    let idxs = vec![
+        (0, 1, 2), (0, 2, 3),
+    ];
+    Object { verts, idxs, mat, obj2world, world2obj }
+}

@@ -76,7 +76,7 @@ impl RayTracer for DemoRayTracer {
         let x = (x as f32) / w - 1.0;
         let y = (y as f32) / h - 1.0;
 
-        let n = 8;
+        let n = 1;
         let rn = (n as f32).recip();
         let rn2 = rn * rn;
         let rv: Color = (0..n).into_iter()
@@ -89,7 +89,7 @@ impl RayTracer for DemoRayTracer {
                                 y + j as f32 * rn / h,
                                 0.0
                             ),
-                            v: Vector(0.0, 0.0, 1.0),
+                            v: Vector(0.0, 0.0, 10.0),
                         };
                         let mut payload = Default::default();
 
@@ -162,7 +162,7 @@ fn main() {
         .translate(Vector(0.0, 0.0, 1.0));
     let cube = make_cube(
         PbrMaterial {
-            albedo: [255, 228, 0].into(),
+            albedo: [235, 228, 0].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -170,8 +170,8 @@ fn main() {
     );
     let cube2 = make_cube(
         PbrMaterial {
-            albedo: [68, 228, 254].into(),
-            emit: [68, 228, 254].into(),
+            albedo: [68, 228, 235].into(),
+            emit: [68, 228, 235].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -181,16 +181,26 @@ fn main() {
     );
     let cube3 = make_cube(
         PbrMaterial {
-            albedo: [255, 54, 72].into(),
-            emit: [255, 54, 72].into(),
+            albedo: [235, 54, 72].into(),
+            emit: [235, 54, 72].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
             .translate(Vector(-1.0, -0.75, 0.0)),
     );
+    let floor = make_pln(
+        PbrMaterial {
+            albedo: [50, 50, 50].into(),
+            //emit: [200, 200, 200].into(),
+            ..Default::default()
+        },
+        cam_trans * Transform::eye()
+            .scale(Vector(15.0, 15.0, 15.0))
+            .translate(Vector(0.0, 2.5, 0.0)),
+    );
 
     let scene = Scene {
-        objs: vec![cube, cube2, cube3],
+        objs: vec![cube, cube2, cube3, floor],
     };
     let mut framebuf = DemoFramebuffer::new(256, 256);
     let albedo = [104, 100, 70].into();
