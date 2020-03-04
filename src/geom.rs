@@ -284,7 +284,7 @@ impl Transform {
         Transform { r1, r2, r3, af: self.af }
     }
     pub fn rotate(self, angle: f32, axis: Vector) -> Self {
-        let (x, y, z) = axis.normalize().into();
+        let (x, y, z) = axis.into();
         let (sin, cos) = angle.sin_cos();
         let rcos = 1.0 - cos;
         let r1 = Vector(

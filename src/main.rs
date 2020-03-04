@@ -172,7 +172,7 @@ fn main() {
         },
         cam_trans * Transform::eye()
             .translate(Vector(0.75, 0.0, 0.0))
-            .rotate((30.0_f32).to_radians(), Vector(1.0, 1.0, 0.0)),
+            .rotate((30.0_f32).to_radians(), Vector(1.0, 1.0, 0.0).normalize()),
     );
     let scene = Scene {
         objs: vec![cube, cube2],
