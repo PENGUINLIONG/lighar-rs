@@ -35,7 +35,7 @@ pub struct Vector(pub f32, pub f32, pub f32);
 impl Vector {
     #[inline]
     fn normalize(self) -> Vector {
-        let l = self.dot(self).sqrt();
+        let l = self.mag();
         Vector(self.0 / l, self.1 / l, self.2 / l)
     }
     #[inline]
@@ -48,6 +48,10 @@ impl Vector {
         let n2 = self.2 * rhs.0 - self.0 * rhs.2;
         let n3 = self.0 * rhs.1 - self.1 * rhs.0;
         Vector(n1, n2, n3)
+    }
+    #[inline]
+    fn mag(self) -> f32 {
+        self.dot(self).sqrt()
     }
 }
 impl Add<Vector> for Vector {
@@ -217,6 +221,21 @@ impl Barycentric {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Sphere {
+    /// Center.
+    pub c: Point,
+    /// Radius.
+    pub r: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct Plane {
+    // Referential origin.
+    pub o: Point,
+    /// Unit normal vector.
+    pub n: Vector,
+}
 
 /// A general purpose ray.
 #[derive(Debug, Clone, Copy)]
@@ -386,8 +405,8 @@ impl Mul<Transform> for Transform {
 }
 
 
-/// Cast a ray to the triangle and return the point of intersection if such
-/// point exists.
+/// Cast a ray to the triangle and return the bary centric coordinate of the
+/// intersection if such point exists.
 #[inline]
 pub fn ray_cast_tri(ray: &Ray, tri: &Triangle) -> Option<Intersection<Barycentric>> {
     // Relative position from the origin of triangle to the origin of the ray.
@@ -420,6 +439,57 @@ pub fn ray_cast_tri(ray: &Ray, tri: &Triangle) -> Option<Intersection<Barycentri
     } else {
         None
     }
+}
+
+/// Cast a ray to the sphere and return the point of intersection if such point
+/// exists.
+#[inline]
+pub fn ray_cast_sph(ray: &Ray, sph: &Sphere) -> Option<Intersection<Point>> {
+    let l = sph.c.rel_from(ray.o);
+    let l_mag2 = l.dot(l);
+    let l_mag = l_mag2.sqrt();
+    let cos_theta = ray.v.dot(l / l_mag);
+    let cos_theta2 = cos_theta * cos_theta;
+    let sin_theta2 = 1.0 - cos_theta2;
+    let r2 = sph.r * sph.r;
+    let l2_sin_theta2 = l_mag2 * sin_theta2;
+    let intersect = if sph.r < l_mag {
+        if r2 < l2_sin_theta2 { return None }
+        // The ray sourced outside of the sphere, hitting the front (outer) face
+        // of if.
+        let t = l_mag * cos_theta - (r2 - l2_sin_theta2).sqrt();
+        let attr = ray.o.affine_add(t * ray.v);
+        let kind = HitKind::Front;
+        Intersection { attr, kind, t }
+    } else {
+        // The ray sourced inside of the sphere, hitting the back (inner) face
+        // of it.
+        let t = (r2 - l2_sin_theta2).sqrt() - l_mag * cos_theta;
+        let attr = ray.o.affine_add(t * ray.v);
+        let kind = HitKind::Back;
+        Intersection { attr, kind, t }
+    };
+    Some(intersect)
+}
+
+/// Cast a ray to the plane and return the point of intersection if such point
+/// exists.
+#[inline]
+pub fn ray_cast_pln(ray: &Ray, pln: &Plane) -> Option<Intersection<Point>> {
+    let dplnray = ray.o.rel_from(pln.o);
+    let dplnray_mag = dplnray.dot(dplnray);
+    let t = dplnray.dot(pln.n);
+    let cos_theta = pln.n.dot(ray.v);
+    if t * cos_theta >= 0.0 {
+        // The ray is on the plane, or the ray is trying to hit the plane in
+        // its opposite direction.
+        return None;
+    }
+    // `t` cannot never be zero here. See previous code.
+    let kind = if t < 0.0 { HitKind::Front } else { HitKind::Back };
+    let attr = ray.o.affine_sub(ray.v * t / cos_theta);
+    let intersect = Intersection { attr, kind, t };
+    Some(intersect)
 }
 
 /// Calculate the reflected direction of an incidental vector `i` about a normal
