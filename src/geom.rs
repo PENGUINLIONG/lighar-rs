@@ -1,7 +1,7 @@
 use std::ops::{Add, Sub, Mul, Div, Neg};
 use crate::rt::{Intersection, HitKind};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Point(pub f32, pub f32, pub f32);
 impl Point {
     #[inline]
@@ -30,27 +30,27 @@ impl From<Point> for (f32, f32, f32) {
 }
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Vector(pub f32, pub f32, pub f32);
 impl Vector {
     #[inline]
-    fn normalize(self) -> Vector {
+    pub fn normalize(self) -> Vector {
         let l = self.mag();
         Vector(self.0 / l, self.1 / l, self.2 / l)
     }
     #[inline]
-    fn dot(self, rhs: Vector) -> f32 {
+    pub fn dot(self, rhs: Vector) -> f32 {
         self.0 * rhs.0 + self.1 * rhs.1 + self.2 * rhs.2
     }
     #[inline]
-    fn cross(self, rhs: Vector) -> Vector {
+    pub fn cross(self, rhs: Vector) -> Vector {
         let n1 = self.1 * rhs.2 - self.2 * rhs.1;
         let n2 = self.2 * rhs.0 - self.0 * rhs.2;
         let n3 = self.0 * rhs.1 - self.1 * rhs.0;
         Vector(n1, n2, n3)
     }
     #[inline]
-    fn mag(self) -> f32 {
+    pub fn mag(self) -> f32 {
         self.dot(self).sqrt()
     }
 }
@@ -103,7 +103,7 @@ impl From<Vector> for (f32, f32, f32) {
 }
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Color(pub f32, pub f32, pub f32, pub f32);
 impl Add<Color> for Color {
     type Output = Color;
@@ -129,22 +129,28 @@ impl Mul<Color> for f32 {
         Color(self * rhs.0, self * rhs.1, self * rhs.2, self * rhs.3)
     }
 }
+impl Mul<Color> for Color {
+    type Output = Color;
+    fn mul(self, rhs: Color) -> Self::Output {
+        Color(self.0 * rhs.0, self.1 * rhs.1, self.2 * rhs.2, self.3 * rhs.3)
+    }
+}
 impl From<Color> for [u8; 3] {
     fn from(x: Color) -> [u8; 3] {
         [
-            (x.0 * 255.0) as u8,
-            (x.1 * 255.0) as u8,
-            (x.2 * 255.0) as u8,
+            (x.0.max(0.0).min(1.0) * 255.0) as u8,
+            (x.1.max(0.0).min(1.0) * 255.0) as u8,
+            (x.2.max(0.0).min(1.0) * 255.0) as u8,
         ]
     }
 }
 impl From<Color> for [u8; 4] {
     fn from(x: Color) -> [u8; 4] {
         [
-            (x.0 * 255.0) as u8,
-            (x.1 * 255.0) as u8,
-            (x.2 * 255.0) as u8,
-            (x.3 * 255.0) as u8,
+            (x.0.max(0.0).min(1.0) * 255.0) as u8,
+            (x.1.max(0.0).min(1.0) * 255.0) as u8,
+            (x.2.max(0.0).min(1.0) * 255.0) as u8,
+            (x.3.max(0.0).min(1.0) * 255.0) as u8,
         ]
     }
 }
@@ -173,13 +179,13 @@ impl From<[u8; 4]> for Color {
 #[derive(Debug, Clone)]
 pub struct Triangle {
     /// Origin of the triangle.
-    o: Point,
+    pub o: Point,
     /// First vector in clockwise order.
-    x: Vector,
+    pub x: Vector,
     /// Second vector in clockwise order.
-    y: Vector,
+    pub y: Vector,
     /// Unit normal vector.
-    n: Vector,
+    pub n: Vector,
 }
 impl Triangle {
     pub fn new(a: Point, b: Point, c: Point) -> Triangle {
@@ -278,7 +284,7 @@ impl Transform {
         Transform { r1, r2, r3, af: self.af }
     }
     pub fn rotate(self, angle: f32, axis: Vector) -> Self {
-        let (x, y, z) = axis.into();
+        let (x, y, z) = axis.normalize().into();
         let (sin, cos) = angle.sin_cos();
         let rcos = 1.0 - cos;
         let r1 = Vector(
@@ -498,5 +504,5 @@ pub fn ray_cast_pln(ray: &Ray, pln: &Plane) -> Option<Intersection<Point>> {
 /// NOTE: `i` and `n` MUST be normalized.
 #[inline]
 pub fn reflect(i: Vector, n: Vector) -> Vector {
-    -2.0 * (i - i.dot(n) * n)
+    2.0 * (i + i.dot(n) * n)
 }
