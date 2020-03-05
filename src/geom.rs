@@ -504,5 +504,5 @@ pub fn ray_cast_pln(ray: &Ray, pln: &Plane) -> Option<Intersection<Point>> {
 /// NOTE: `i` and `n` MUST be normalized.
 #[inline]
 pub fn reflect(i: Vector, n: Vector) -> Vector {
-    2.0 * (i + i.dot(n) * n)
+    2.0 * n * n.dot(i) - i
 }

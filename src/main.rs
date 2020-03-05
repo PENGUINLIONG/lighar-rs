@@ -121,7 +121,7 @@ impl RayTracer for DemoRayTracer {
         ray: &Self::Ray,
         payload: &mut Self::Payload
     ) -> Self::Color {
-        [0, 0, 0].into()
+        self.ambient
     }
     fn closest_hit(
         &self,
@@ -142,11 +142,11 @@ impl RayTracer for DemoRayTracer {
             v: refl.normalize(),
         };
         //return [255, 0, 255].into();
-        if *payload < 5 {
+        if *payload < 10 {
             *payload += 1;
-            mat.emit + mat.albedo * (self.trace(refl_ray, payload) + self.ambient)
+            mat.emit + mat.albedo * self.trace(refl_ray, payload)
         } else {
-            mat.emit + mat.albedo * self.ambient
+            mat.emit + self.ambient
         }
     }
     fn scene(&self) -> &Scene<PbrMaterial> {
@@ -171,7 +171,7 @@ fn main() {
     let cube2 = make_cube(
         PbrMaterial {
             albedo: [68, 228, 235].into(),
-            emit: [68, 228, 235].into(),
+            //emit: [68, 228, 235].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -182,7 +182,7 @@ fn main() {
     let cube3 = make_cube(
         PbrMaterial {
             albedo: [235, 54, 72].into(),
-            emit: [235, 54, 72].into(),
+            //emit: [235, 54, 72].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -190,21 +190,21 @@ fn main() {
     );
     let floor = make_pln(
         PbrMaterial {
-            albedo: [50, 50, 50].into(),
-            //emit: [200, 200, 200].into(),
+            albedo: [255, 255, 255].into(),
+            emit: [200, 0, 200].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
             .scale(Vector(15.0, 15.0, 15.0))
-            .translate(Vector(0.0, 2.5, 0.0)),
+            .translate(Vector(0.0, 1.5, 0.0)),
     );
 
     let scene = Scene {
         objs: vec![cube, cube2, cube3, floor],
     };
     let mut framebuf = DemoFramebuffer::new(256, 256);
-    let albedo = [104, 100, 70].into();
-    let rt = DemoRayTracer::new(scene, albedo);
+    let ambient = [255, 255, 255].into();
+    let rt = DemoRayTracer::new(scene, ambient);
     rt.draw(&mut framebuf);
     framebuf.save("1.bmp").unwrap();
 }
