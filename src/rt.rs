@@ -1,14 +1,11 @@
 use std::ops::Mul;
-use crate::geom::{Transform, Triangle};
+use crate::geom::{Transform, Triangle, Color};
 use crate::scene::Scene;
 
-pub trait Framebuffer {
-    /// Color unit.
-    type Color;
-
+pub trait Framebuffer : Send + Sync {
     fn width(&self) -> u32;
     fn height(&self) -> u32;
-    fn store(&mut self, x: u32, y: u32, color: Self::Color);
+    fn store(&mut self, x: u32, y: u32, color: Color);
 }
 
 #[derive(PartialEq, Eq)]
@@ -24,7 +21,7 @@ pub struct Intersection<RayAttr> {
     pub t: f32,
 }
 
-pub trait RayTracer {
+pub trait RayTracer : Sync + Send {
     type Material;
     /// User specified data for computation.
     type Payload;
@@ -32,9 +29,6 @@ pub trait RayTracer {
     type Ray: Clone;
     /// Data that describes how a ray intersected with a primitive.
     type RayAttr;
-    /// Color unit. A ray tracer can only write to framebuffers with the same
-    /// color type.
-    type Color: Clone;
 
     /// Generate rays and invoke `trace` to trace the rays.
     fn ray_gen(
@@ -43,7 +37,7 @@ pub trait RayTracer {
         y: u32,
         w: u32,
         h: u32,
-    ) -> Self::Color;
+    ) -> Color;
     /// Determine whether a ray intersected with an object.
     fn intersect(
         &self,
@@ -65,7 +59,7 @@ pub trait RayTracer {
         &self,
         ray: &Self::Ray,
         payload: &mut Self::Payload
-    ) -> Self::Color;
+    ) -> Color;
     /// The ray hit the nearest object.
     fn closest_hit(
         &self,
@@ -74,14 +68,14 @@ pub trait RayTracer {
         intersect: &Intersection<Self::RayAttr>,
         payload: &mut Self::Payload,
         mat: &Self::Material,
-    ) -> Self::Color;
+    ) -> Color;
 
     /// Trace ray in the scene.
     fn trace(
         &self,
         ray: Self::Ray,
         payload: &mut Self::Payload,
-    ) -> Self::Color {
+    ) -> Color {
         let mut closest: Option<(
             Triangle,
             &Self::Material,
@@ -117,16 +111,21 @@ pub trait RayTracer {
     }
 
     fn draw<FB>(&self, framebuf: &mut FB)
-        where FB: Framebuffer<Color=Self::Color>
+        where FB: Framebuffer
     {
+        use rayon::prelude::*;
         let w = framebuf.width();
         let h = framebuf.height();
-        for x in 0..w {
-            for y in 0..h {
-                let color = self.ray_gen(x, y, w, h);
-                framebuf.store(x, y, color);
-            }
-        }
+        let framebuf = std::sync::Arc::new(std::sync::Mutex::new(framebuf));
+
+        (0..w).into_par_iter()
+            .for_each(|x| {
+                (0..h).into_par_iter()
+                    .for_each(|y| {
+                        framebuf.lock().unwrap()
+                            .store(x, y, self.ray_gen(x, y, w, h));
+                    });
+            });
     }
 
     /// The scene the tracer is bound to.

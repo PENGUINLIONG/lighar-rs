@@ -105,6 +105,8 @@ impl From<Vector> for (f32, f32, f32) {
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Color(pub f32, pub f32, pub f32, pub f32);
+unsafe impl Send for Color {}
+unsafe impl Sync for Color {}
 impl Add<Color> for Color {
     type Output = Color;
     fn add(self, rhs: Color) -> Self::Output {

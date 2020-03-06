@@ -37,11 +37,12 @@ impl DemoFramebuffer {
         self.buf.save(path)
     }
 }
+unsafe impl Send for DemoFramebuffer {}
+unsafe impl Sync for DemoFramebuffer {}
 impl Framebuffer for DemoFramebuffer {
-    type Color = Color;
     fn width(&self) -> u32 { self.w }
     fn height(&self) -> u32 { self.h }
-    fn store(&mut self, x: u32, y: u32, color: Self::Color) {
+    fn store(&mut self, x: u32, y: u32, color: Color) {
         let color: [u8; 3] = color.into();
         self.buf.put_pixel(x, y, color.into());
     }
@@ -68,12 +69,13 @@ impl DemoRayTracer {
         DemoRayTracer { s, ambient, skybox, skybox_samp, counter }
     }
 }
+unsafe impl Send for DemoRayTracer {}
+unsafe impl Sync for DemoRayTracer {}
 impl RayTracer for DemoRayTracer {
     type Material = PbrMaterial;
     type Payload = i32; // Recursion count.
     type Ray = Ray;
     type RayAttr = Barycentric;
-    type Color = Color;
 
     fn ray_gen(
         &self,
@@ -81,14 +83,16 @@ impl RayTracer for DemoRayTracer {
         y: u32,
         w: u32,
         h: u32,
-    ) -> Self::Color {
+    ) -> Color {
+        let tic = std::time::Instant::now();
+
         let id = x * h + y;
         let w = w as f32 / 2.0;
         let h = h as f32 / 2.0;
         let x = (x as f32) / w - 1.0;
         let y = (y as f32) / h - 1.0;
 
-        let n = 3;
+        let n = 5;
         let rn = (n as f32).recip();
         let rn2 = rn * rn;
         let rv: Color = (0..n).into_iter()
@@ -105,14 +109,14 @@ impl RayTracer for DemoRayTracer {
                         };
                         let mut payload = Default::default();
 
-                        let tic = std::time::Instant::now();
                         let cur = self.trace(ray, &mut payload);
-                        println!("traced ray for pixel #{} in {}s",
-                            id,
-                            tic.elapsed().as_millis() as f64 / 1000.0);
                         seed + cur
                     })
             });
+            
+        println!("traced ray for pixel #{} in {}s",
+            id,
+            tic.elapsed().as_millis() as f64 / 1000.0);
         rv * ((n * n) as f32).recip()
     }
     fn intersect(
@@ -137,7 +141,7 @@ impl RayTracer for DemoRayTracer {
         &self,
         ray: &Self::Ray,
         payload: &mut Self::Payload
-    ) -> Self::Color {
+    ) -> Color {
         //let vec = Vector(ray.o.0, ray.o.1, ray.o.2 + 1.0).normalize();
         //self.skybox_samp.sample(&self.skybox, vec)
         *self.counter.borrow_mut() += 1;
@@ -150,7 +154,7 @@ impl RayTracer for DemoRayTracer {
         intersect: &Intersection<Self::RayAttr>,
         payload: &mut Self::Payload,
         mat: &Self::Material,
-    ) -> Self::Color {
+    ) -> Color {
         // Number of extra rays to trace from this intersection.
         const NRAY: usize = 32;
         const F0: f32 = 0.04;
@@ -245,7 +249,7 @@ fn main() {
     let scene = Scene {
         objs: vec![cube, cube2, cube3, floor],
     };
-    let mut framebuf = DemoFramebuffer::new(64, 64);
+    let mut framebuf = DemoFramebuffer::new(128, 128);
     let ambient = [50, 50, 50].into();
     let skybox = load_skybox();
     let rt = DemoRayTracer::new(scene, ambient, skybox);
