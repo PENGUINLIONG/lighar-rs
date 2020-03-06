@@ -2,11 +2,15 @@ mod geom;
 mod rt;
 mod scene;
 mod model;
+mod img;
+mod sampler;
 
 use geom::*;
 use rt::*;
 use scene::*;
 use model::*;
+use img::*;
+use sampler::*;
 
 #[derive(Default)]
 struct PbrMaterial {
@@ -51,10 +55,15 @@ struct DebugPayload {
 struct DemoRayTracer {
     s: Scene<PbrMaterial>,
     ambient: Color,
+    skybox: Vec<Image>,
+    skybox_samp: CubeSampler,
 }
 impl DemoRayTracer {
-    pub fn new(s: Scene<PbrMaterial>, ambient: Color) -> DemoRayTracer {
-        DemoRayTracer { s, ambient }
+    pub fn new(s: Scene<PbrMaterial>, ambient: Color, skybox: Vec<Image>) -> DemoRayTracer {
+        let skybox_samp = CubeSampler::default();
+        debug_assert!(skybox_samp.validate(&skybox),
+            "sampled image failed to meet the sampler's requirement");
+        DemoRayTracer { s, ambient, skybox, skybox_samp }
     }
 }
 impl RayTracer for DemoRayTracer {
@@ -121,7 +130,8 @@ impl RayTracer for DemoRayTracer {
         ray: &Self::Ray,
         payload: &mut Self::Payload
     ) -> Self::Color {
-        self.ambient
+        let vec = Vector(ray.o.0, ray.o.1, ray.o.2 + 1.0).normalize();
+        self.skybox_samp.sample(&self.skybox, vec)
     }
     fn closest_hit(
         &self,
@@ -141,7 +151,6 @@ impl RayTracer for DemoRayTracer {
             o: p,
             v: refl.normalize(),
         };
-        //return [255, 0, 255].into();
         if *payload < 10 {
             *payload += 1;
             mat.emit + mat.albedo * self.trace(refl_ray, payload)
@@ -182,7 +191,7 @@ fn main() {
     let cube3 = make_cube(
         PbrMaterial {
             albedo: [235, 54, 72].into(),
-            //emit: [235, 54, 72].into(),
+            emit: [235, 54, 72].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -191,7 +200,7 @@ fn main() {
     let floor = make_pln(
         PbrMaterial {
             albedo: [255, 255, 255].into(),
-            emit: [200, 0, 200].into(),
+            //emit: [200, 0, 200].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -200,11 +209,30 @@ fn main() {
     );
 
     let scene = Scene {
-        objs: vec![cube, cube2, cube3, floor],
+        objs: vec![cube, cube2, cube3/*, floor*/],
     };
     let mut framebuf = DemoFramebuffer::new(256, 256);
     let ambient = [255, 255, 255].into();
-    let rt = DemoRayTracer::new(scene, ambient);
+    let skybox = load_skybox();
+    let rt = DemoRayTracer::new(scene, ambient, skybox);
     rt.draw(&mut framebuf);
     framebuf.save("1.bmp").unwrap();
+}
+
+fn load_img<P: AsRef<std::path::Path>>(p: P) -> Image {
+    image::io::Reader::open(p).unwrap()
+        .decode().unwrap()
+        .into()
+}
+fn load_skybox() -> Vec<Image> {
+    [
+        "./skybox/pos-x.png",
+        "./skybox/neg-x.png",
+        "./skybox/pos-y.png",
+        "./skybox/neg-y.png",
+        "./skybox/pos-z.png",
+        "./skybox/neg-z.png",
+    ].into_iter()
+        .map(|x| load_img(x))
+        .collect()
 }
