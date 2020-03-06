@@ -57,13 +57,15 @@ struct DemoRayTracer {
     ambient: Color,
     skybox: Vec<Image>,
     skybox_samp: CubeSampler,
+    counter: std::cell::RefCell<usize>,
 }
 impl DemoRayTracer {
     pub fn new(s: Scene<PbrMaterial>, ambient: Color, skybox: Vec<Image>) -> DemoRayTracer {
         let skybox_samp = CubeSampler::default();
         debug_assert!(skybox_samp.validate(&skybox),
             "sampled image failed to meet the sampler's requirement");
-        DemoRayTracer { s, ambient, skybox, skybox_samp }
+        let counter = std::cell::RefCell::new(0);
+        DemoRayTracer { s, ambient, skybox, skybox_samp, counter }
     }
 }
 impl RayTracer for DemoRayTracer {
@@ -80,12 +82,13 @@ impl RayTracer for DemoRayTracer {
         w: u32,
         h: u32,
     ) -> Self::Color {
+        let id = x * h + y;
         let w = w as f32 / 2.0;
         let h = h as f32 / 2.0;
         let x = (x as f32) / w - 1.0;
         let y = (y as f32) / h - 1.0;
 
-        let n = 1;
+        let n = 3;
         let rn = (n as f32).recip();
         let rn2 = rn * rn;
         let rv: Color = (0..n).into_iter()
@@ -102,7 +105,12 @@ impl RayTracer for DemoRayTracer {
                         };
                         let mut payload = Default::default();
 
-                        seed + self.trace(ray, &mut payload)
+                        let tic = std::time::Instant::now();
+                        let cur = self.trace(ray, &mut payload);
+                        println!("traced ray for pixel #{} in {}s",
+                            id,
+                            tic.elapsed().as_millis() as f64 / 1000.0);
+                        seed + cur
                     })
             });
         rv * ((n * n) as f32).recip()
@@ -130,8 +138,10 @@ impl RayTracer for DemoRayTracer {
         ray: &Self::Ray,
         payload: &mut Self::Payload
     ) -> Self::Color {
-        let vec = Vector(ray.o.0, ray.o.1, ray.o.2 + 1.0).normalize();
-        self.skybox_samp.sample(&self.skybox, vec)
+        //let vec = Vector(ray.o.0, ray.o.1, ray.o.2 + 1.0).normalize();
+        //self.skybox_samp.sample(&self.skybox, vec)
+        *self.counter.borrow_mut() += 1;
+        self.ambient
     }
     fn closest_hit(
         &self,
@@ -141,20 +151,43 @@ impl RayTracer for DemoRayTracer {
         payload: &mut Self::Payload,
         mat: &Self::Material,
     ) -> Self::Color {
+        // Number of extra rays to trace from this intersection.
+        const NRAY: usize = 32;
+        const F0: f32 = 0.04;
+
         let bary = intersect.attr;
-        let u = bary.u;
-        let v = bary.v;
-        let w = 1.0 - u - v;
-        let p = tri.o.affine_add(u * tri.x + v * tri.y);
+        let p = tri.o.affine_add(bary.u * tri.x + bary.v * tri.y);
         let refl = -reflect(ray.v, tri.n);
         let refl_ray = Ray {
             o: p,
             v: refl.normalize(),
         };
-        if *payload < 10 {
+
+        if *payload < 3 {
             *payload += 1;
-            mat.emit + mat.albedo * self.trace(refl_ray, payload)
+
+            // Lighting.
+            let specular = self.trace(refl_ray, payload);
+            let diffuse = {
+                let n = tri.n;
+                let u = tri.y.normalize();
+                let v = n.cross(u);
+                let mut temp = Color::default();
+                for _ in 0..NRAY {
+                    use std::f32::consts::PI;
+                    let lon = (rand::random::<f32>() - 0.5) * 2.0 * PI;
+                    let lat = (rand::random::<f32>() - 0.5) * PI;
+                    let dir = (u * lon.cos() + v * lon.sin()) * lat.sin() + n * lat.cos();
+                    let diffuse_ray = Ray { o: p, v: dir.normalize() };
+                    let mut payload2 = *payload;
+                    temp = temp + self.trace(diffuse_ray, &mut payload2);
+                }
+                temp * (NRAY as f32).recip()
+            };
+
+            mat.emit + mat.albedo * (diffuse + specular * F0)
         } else {
+            *self.counter.borrow_mut() += 1;
             mat.emit + self.ambient
         }
     }
@@ -171,7 +204,8 @@ fn main() {
         .translate(Vector(0.0, 0.0, 1.0));
     let cube = make_cube(
         PbrMaterial {
-            albedo: [235, 228, 0].into(),
+            albedo: [245, 228, 0].into(),
+            emit: [245, 228, 0].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -180,7 +214,7 @@ fn main() {
     let cube2 = make_cube(
         PbrMaterial {
             albedo: [68, 228, 235].into(),
-            //emit: [68, 228, 235].into(),
+            emit: [68, 228, 235].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -200,7 +234,7 @@ fn main() {
     let floor = make_pln(
         PbrMaterial {
             albedo: [255, 255, 255].into(),
-            //emit: [200, 0, 200].into(),
+            //emit: [40, 40, 40].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -209,13 +243,17 @@ fn main() {
     );
 
     let scene = Scene {
-        objs: vec![cube, cube2, cube3/*, floor*/],
+        objs: vec![cube, cube2, cube3, floor],
     };
-    let mut framebuf = DemoFramebuffer::new(256, 256);
-    let ambient = [255, 255, 255].into();
+    let mut framebuf = DemoFramebuffer::new(64, 64);
+    let ambient = [50, 50, 50].into();
     let skybox = load_skybox();
     let rt = DemoRayTracer::new(scene, ambient, skybox);
+    let tic = std::time::Instant::now();
     rt.draw(&mut framebuf);
+    println!("traced {} rays in {}s",
+        rt.counter.borrow(),
+        tic.elapsed().as_millis() as f64 / 1000.0);
     framebuf.save("1.bmp").unwrap();
 }
 
