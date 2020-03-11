@@ -178,10 +178,10 @@ impl RayTracer for DemoRayTracer {
                 let v = n.cross(u);
                 let mut temp = Color::default();
                 for _ in 0..NRAY {
-                    use std::f32::consts::PI;
-                    let lon = (rand::random::<f32>() - 0.5) * 2.0 * PI;
-                    let lat = (rand::random::<f32>() - 0.5) * PI;
-                    let dir = (u * lon.cos() + v * lon.sin()) * lat.sin() + n * lat.cos();
+                    let dir = hemisphere(
+                        rand::random::<f32>(),
+                        rand::random::<f32>(),
+                    );
                     let diffuse_ray = Ray { o: p, v: dir.normalize() };
                     let mut payload2 = *payload;
                     temp = temp + self.trace(diffuse_ray, &mut payload2);

@@ -53,6 +53,10 @@ impl Vector {
     pub fn mag(self) -> f32 {
         self.dot(self).sqrt()
     }
+    #[inline]
+    pub fn in_basis(self, x: Vector, y: Vector, z: Vector) -> Vector {
+        self.0 * x + self.1 * y + self.2 * z
+    }
 }
 impl Add<Vector> for Vector {
     type Output = Vector;
@@ -507,4 +511,15 @@ pub fn ray_cast_pln(ray: &Ray, pln: &Plane) -> Option<Intersection<Point>> {
 #[inline]
 pub fn reflect(i: Vector, n: Vector) -> Vector {
     2.0 * n * n.dot(i) - i
+}
+
+/// Calculate a unit direction vector shooting out of the north hemisphere based
+/// on height `a` and angular fraction `b` in [0..1).
+#[inline]
+pub fn hemisphere(a: f32, b: f32) -> Vector {
+    const TWO_PI: f32 = std::f32::consts::PI * 2.0;
+    let r = (1.0 - a * a).sqrt();
+    let theta = b * TWO_PI;
+    let (sin_theta, cos_theta) = theta.sin_cos();
+    Vector(r * sin_theta, r * cos_theta, a)
 }
