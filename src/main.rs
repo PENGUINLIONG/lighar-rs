@@ -92,7 +92,7 @@ impl RayTracer for DemoRayTracer {
         let x = (x as f32) / w - 1.0;
         let y = (y as f32) / h - 1.0;
 
-        let n = 5;
+        let n = 1;
         let rn = (n as f32).recip();
         let rn2 = rn * rn;
         let rv: Color = (0..n).into_iter()
@@ -156,7 +156,7 @@ impl RayTracer for DemoRayTracer {
         mat: &Self::Material,
     ) -> Color {
         // Number of extra rays to trace from this intersection.
-        const NRAY: usize = 32;
+        const NRAY: usize = 16;
         const F0: f32 = 0.04;
 
         let bary = intersect.attr;
@@ -167,7 +167,7 @@ impl RayTracer for DemoRayTracer {
             v: refl.normalize(),
         };
 
-        if *payload < 3 {
+        if *payload < 5 {
             *payload += 1;
 
             // Lighting.
@@ -218,7 +218,7 @@ fn main() {
     let cube2 = make_cube(
         PbrMaterial {
             albedo: [68, 228, 235].into(),
-            emit: [68, 228, 235].into(),
+            emit: [32, 173, 150].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -228,8 +228,8 @@ fn main() {
     );
     let cube3 = make_cube(
         PbrMaterial {
-            albedo: [235, 54, 72].into(),
-            emit: [235, 54, 72].into(),
+            albedo: [230, 50, 70].into(),
+            emit: [150, 32, 55].into(),
             ..Default::default()
         },
         cam_trans * Transform::eye()
@@ -249,7 +249,7 @@ fn main() {
     let scene = Scene {
         objs: vec![cube, cube2, cube3, floor],
     };
-    let mut framebuf = DemoFramebuffer::new(128, 128);
+    let mut framebuf = DemoFramebuffer::new(256, 256);
     let ambient = [50, 50, 50].into();
     let skybox = load_skybox();
     let rt = DemoRayTracer::new(scene, ambient, skybox);
