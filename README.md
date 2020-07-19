@@ -1,5 +1,7 @@
 # Lighar
 
+![Lighar output](1.bmp)
+
 Lighar is a software ray tracing framework that feels just like `VK_NV_ray_tracing`.
 
 Hah, nope! it's just my playground. Feel free to check out. 0v0
